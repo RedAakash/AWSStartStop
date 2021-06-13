@@ -5,6 +5,8 @@ from time import ctime
 default_profile = 'ProfileName'
 default_region = 'ap-south-1'   # Example AWS Code Region ap-south-1
 
+logfile_location = '/tmp/logfile.log'
+
 default_cluster_names_list = [
     # 'cluster_names'
 ] ### If you want to start & stop some sort of services mention in the same list | Otherwise run for All Clusters and ECS Services
@@ -106,7 +108,7 @@ class BotoConnetion:
                     msg = f'this Service => Cluster: {cluster_name}, Service: {service_name} stopped time: {ctime()}\n'
                 
                 finally:
-                    with open('/tmp/MoneyOneEcs.log', 'a') as fileLog:
+                    with open(logfile_location, 'a') as fileLog:
                         fileLog.write(msg)
     
     def update_services_start(self, cluster_list : list = [], *args, **kwargs):
@@ -128,7 +130,7 @@ class BotoConnetion:
                     msg = f'this Service => Cluster: {cluster_name}, Service: {service_name} starting time: {ctime()}\n'
                 
                 finally:
-                    with open('/tmp/MoneyOneEcs.log', 'a') as fileLog:
+                    with open(logfile_location, 'a') as fileLog:
                         fileLog.write(msg)
         
     def __call__(self, date_time_bool : bool, cluster_list : list = [], *args, **kwargs):
