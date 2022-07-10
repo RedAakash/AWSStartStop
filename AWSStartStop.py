@@ -3,25 +3,39 @@ import datetime as dt
 from time import ctime, sleep
 import threading
 
-default_profile = 'AwsProfile'
+default_profile = 'ProFileName'
 default_region = 'ap-south-1'
 
 default_cluster_names_list = [
     # 'default-cluster'
 ]
 
-logfile_location = '/tmp/LoggingFile.log'
+logfile_location = '/tmp/infraLog.log'
 
 default_instances_ids_list = [
-    #'i-03984cc6'
+    #'i-03984'
+]
+
+
+### Mentioned the client name you want to stop always
+
+stops_clients = [
+#     'vistaarfinance',
+#     'eightfinance',
+#     'of',
+#     'bhartiaxa',
+#     'tu',
+#     'tapstart',
+#     'indifi',
+#     'gt'
 ]
 
 default_rds_db_instance_identifier = [
-    #'default-rds'
+    'moneyonef-uat'
 ]
 
-start_time = dt.time(22,00)
-end_time = dt.time(9,00)
+start_time = dt.time(23,55)
+end_time = dt.time(8,00)
 
 class BotoConnetion:
     def __init__(self, profile_name : str = default_profile, region_name : str = default_region, *args, **kwargs):
@@ -53,9 +67,10 @@ class BotoConnetion:
         self.rds_thread_list = []
         
     def time_calculate(self, startTime=start_time, endTime=end_time, nowTime=dt.datetime.now().time()):
+#        return False # for start
         if nowTime >= startTime or nowTime <= endTime or dt.datetime.today().weekday() > 4:
-            return True
-        return False
+            return True # for stop
+        return False # for start
         
     def log_write(self, msg : str, *args, **kwargs):
         with open(logfile_location, 'a') as fileLog:
@@ -166,6 +181,20 @@ class BotoConnetion:
     def get_clusters(self, cluster_names_list : list = [], *args, **kwargs):
         return self.get_list_of_clusters() if not cluster_names_list else cluster_names_list
     
+    def chunk_list(self, it, chunk_by=10):
+        from itertools import islice
+
+        it = iter(it)
+        return list(iter(lambda: tuple(islice(it, chunk_by)), ()))
+
+    def get_filter_from_stop_services_list(self, services_list : list = [], *args, **kwargs):
+        n = [    
+            str 
+            for str in services_list if any(sub in str for sub in stops_clients)
+        ]
+
+        return list(set(services_list) - set(n))
+    
     def get_dict_of_services(self, cluster_list : list = [], *args, **kwargs):
         cluster_services_dict = dict()
         
@@ -176,16 +205,40 @@ class BotoConnetion:
         for cluster_name in clusters:
             try:
                 servicesArns = self.ecs_connection.list_services(
-                    cluster = cluster_name
-                )['serviceArns']
-                
-                servicesDescriptions = self.ecs_connection.describe_services(
                     cluster = cluster_name,
-                    services = servicesArns
-                )
+                    maxResults=100,
+                )['serviceArns']
+
+                servicesArnsChunks = self.chunk_list(servicesArns, 10)
                 
-                cluster_services_dict[cluster_name] = [ service['serviceName'] for service in servicesDescriptions['services'] ]
+                servicesDescriptionslist = [
+
+                    self.ecs_connection.describe_services(
+                        cluster = cluster_name,
+                        services = iter_list
+                    )
+                    
+                    for iter_list in servicesArnsChunks
+                ]
+
+
+                services_list = []
+
+                for obj in servicesDescriptionslist:
+                    for service in obj['services']:
+
+                        services_list.append(
+                            service['serviceName']
+                        )
+
+                if kwargs.get('remove_clients'):
+                    services_list = self.get_filter_from_stop_services_list(services_list)
+                
+                # cluster_services_dict[cluster_name] = [ service['serviceName'] for service in servicesDescriptionslist ]
+
+                cluster_services_dict[cluster_name] = services_list
             except Exception as err:
+                print(err)
                 print('Not Found ECS Cluster => {cluster}'.format(cluster=cluster_name))
 
         return cluster_services_dict
@@ -230,7 +283,7 @@ class BotoConnetion:
                     self.log_write(msg)
     
     def update_ecs_services_start(self, cluster_list : list = [], *args, **kwargs):
-        services_dict = self.get_dict_of_services(cluster_list)
+        services_dict = self.get_dict_of_services(cluster_list, remove_clients=True)
         
         for cluster_name, services_obj in services_dict.items():
             for service_name in services_obj:
@@ -262,14 +315,19 @@ class BotoConnetion:
         if date_time_bool:
             rds_instance = self.stop_rds_instances(rds_db_instance_identifier, *args, **kwargs)
             services = self.update_ecs_services_stop(cluster_list, *args, **kwargs)
-            instances = self.stop_instances(instances_ids_list, *args, **kwargs)
+            #instances = self.stop_instances(instances_ids_list, *args, **kwargs)
         else:
-            instances = self.start_instances(instances_ids_list, *args, **kwargs)
+            #instances = self.start_instances(instances_ids_list, *args, **kwargs)
             rds_instance = self.start_rds_instances(rds_db_instance_identifier, *args, **kwargs)
             self.rds_thread_function(rds_db_instance_identifier)
             for i in self.rds_thread_list:
                 i.join()
             services = self.update_ecs_services_start(cluster_list, *args, **kwargs)
+
+        # services = self.update_ecs_services_start(cluster_list, *args, **kwargs)
+
+        # services = self.update_ecs_services_stop(cluster_list, *args, **kwargs)
+
 
 ############ Don't Change Here
 def main():
